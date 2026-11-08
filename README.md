@@ -5,10 +5,6 @@ moving along real-world-ish routes, streams their positions through Redis,
 enriches them with ETA/delay calculations, and shows them moving live on a
 map over a WebSocket connection.
 
-Built to be fast to stand up (`docker compose up`) while still demonstrating
-patterns that show up in real backend/distributed-systems interviews: an
-event-streaming pipeline, consumer groups, an API gateway, and a persistence
-layer, each as an independently deployable service.
 
 ## Architecture
 
@@ -114,9 +110,7 @@ pip install -r services/history-service/requirements.txt && (cd services/history
 - **Independent deployability** — each service has its own Dockerfile, its own dependencies, and can be restarted/scaled/replaced without touching the others
 - **Graceful degradation** — if a downstream consumer (gateway or history-service) goes down, positions and ETA events keep flowing through Redis and get replayed once it's back, rather than being lost
 
-## Stretch goals (good next steps if you want to go further)
-
-Roughly ordered by effort vs. resume impact:
+## Roadmap
 
 1. **Tests** — unit test the ETA/delay-classification logic and an integration test that spins up Redis via `testcontainers` and asserts an event makes it end-to-end.
 2. **Observability** — add Prometheus metrics (`prometheus-fastapi-instrumentator`) to `gateway`/`history-service` and a Grafana dashboard; add OpenTelemetry tracing across the pipeline so a single train event can be traced from `simulator` through to the browser.

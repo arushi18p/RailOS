@@ -1,0 +1,59 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  simulator:
+    build: ./services/simulator
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      TICK_SECONDS: "1.5"
+    restart: unless-stopped
+
+  eta-service:
+    build: ./services/eta-service
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    restart: unless-stopped
+    deploy:
+      replicas: 1
+
+  history-service:
+    build: ./services/history-service
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DB_PATH: /data/history.db
+    volumes:
+      - history-data:/data
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+  gateway:
+    build: ./services/gateway
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+volumes:
+  history-data:

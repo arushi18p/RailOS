@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Train Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  html, body { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  #map { position: absolute; top: 0; bottom: 0; left: 0; right: 340px; }
+  #panel {
+    position: absolute; top: 0; right: 0; bottom: 0; width: 340px;
+    background: #12161c; color: #e6e9ef; overflow-y: auto; box-sizing: border-box;
+    padding: 16px; border-left: 1px solid #232a35;
+  }
+  #panel h1 { font-size: 16px; margin: 0 0 4px; }
+  #panel .sub { font-size: 12px; color: #8792a2; margin-bottom: 16px; }
+  .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .train-card {
+    background: #1a2029; border: 1px solid #232a35; border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 10px; font-size: 13px;
+  }
+  .train-card .row { display: flex; justify-content: space-between; margin-top: 4px; color: #b7c0cc; }
+  .train-card .id { font-weight: 600; font-size: 14px; }
+  .ON_TIME { color: #3ddc84; }
+  .MINOR_DELAY { color: #f5c542; }
+  .SEVERE_DELAY { color: #f5544a; }
+  .conn-badge {
+    position: absolute; top: 12px; left: 12px; z-index: 1000;
+    background: #12161c; color: #e6e9ef; padding: 6px 10px; border-radius: 6px;
+    font-size: 12px; font-family: -apple-system, sans-serif; border: 1px solid #232a35;
+  }
+</style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="conn-badge" id="conn-badge">connecting…</div>
+  <div id="panel">
+    <h1>Live Train Tracker</h1>
+    <div class="sub">Event-driven microservices demo &middot; positions update in real time over WebSocket</div>
+    <div id="trains"></div>
+  </div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map = L.map('map').setView([39.5, -85], 5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors',
+  maxZoom: 18,
+}).addTo(map);
+
+const markers = {};
+const stateByTrain = {};
+
+const statusColor = { ON_TIME: '#3ddc84', MINOR_DELAY: '#f5c542', SEVERE_DELAY: '#f5544a' };
+
+function upsertMarker(t) {
+  const color = statusColor[t.delay_status] || '#8792a2';
+  if (!markers[t.train_id]) {
+    markers[t.train_id] = L.circleMarker([t.lat, t.lon], {
+      radius: 7, color, fillColor: color, fillOpacity: 0.9, weight: 2,
+    }).addTo(map);
+  }
+  const m = markers[t.train_id];
+  m.setLatLng([t.lat, t.lon]);
+  m.setStyle({ color, fillColor: color });
+  m.bindPopup(
+    `<b>${t.train_id}</b> &middot; ${t.route_name}<br/>` +
+    `${t.last_stop} &rarr; ${t.next_stop}<br/>` +
+    `ETA: ${t.eta_min} min &middot; Delay: ${t.delay_min} min<br/>` +
+    `Status: ${t.delay_status}`
+  );
+}
+
+function renderPanel() {
+  const el = document.getElementById('trains');
+  const trains = Object.values(stateByTrain).sort((a, b) => a.train_id.localeCompare(b.train_id));
+  el.innerHTML = trains.map(t => `
+    <div class="train-card">
+      <div class="id"><span class="status-dot" style="background:${statusColor[t.delay_status] || '#8792a2'}"></span>${t.train_id} &middot; ${t.route_name}</div>
+      <div class="row"><span>${t.last_stop} &rarr; ${t.next_stop}</span></div>
+      <div class="row"><span>ETA</span><span>${t.eta_min} min</span></div>
+      <div class="row"><span>Delay</span><span class="${t.delay_status}">${t.delay_min} min (${t.delay_status.replace('_',' ')})</span></div>
+    </div>
+  `).join('');
+}
+
+function applyEvent(t) {
+  stateByTrain[t.train_id] = t;
+  upsertMarker(t);
+  renderPanel();
+}
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  const badge = document.getElementById('conn-badge');
+
+  ws.onopen = () => { badge.textContent = 'live'; badge.style.color = '#3ddc84'; };
+  ws.onclose = () => {
+    badge.textContent = 'reconnecting…'; badge.style.color = '#f5c542';
+    setTimeout(connect, 1500);
+  };
+  ws.onerror = () => ws.close();
+
+  ws.onmessage = (msg) => {
+    const payload = JSON.parse(msg.data);
+    if (payload.type === 'snapshot') {
+      payload.data.forEach(applyEvent);
+    } else if (payload.type === 'train_update') {
+      applyEvent(payload.data);
+    }
+  };
+}
+
+connect();
+</script>
+</body>
+</html>
